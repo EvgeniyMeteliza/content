@@ -530,7 +530,7 @@ class Client(BaseClient):
             if len(data) < 100:
                 no_data_flag = 1
                 page = 0
-                starting_date_from = (dateparser.parse(starting_date_to) + timedelta(seconds=1)).strftime(DATE_FORMAT)
+                starting_date_from = (dateparser.parse(starting_date_to) + timedelta(milliseconds=100)).strftime(DATE_FORMAT)
                 starting_date_to = datetime.now().strftime(DATE_FORMAT)
                 date_to = starting_date_to
             else:
@@ -539,10 +539,10 @@ class Client(BaseClient):
                 else:
                     result_id = None
                     page = 0
-                    for i in range(len(data) - 1, -1, -1):
+                    for i in range(len(data) - 2, -1, -1):
                         if data[i].get(key_for_date) != data[-1].get(key_for_date):
                             date_to = (dateparser.parse(
-                                data[i].get(key_for_date)) - timedelta(seconds=1)).strftime(DATE_FORMAT)
+                                data[i].get(key_for_date)) - timedelta(milliseconds=100)).strftime(DATE_FORMAT)
                             data = data[:i + 1:]
                             break
 
