@@ -1250,7 +1250,7 @@ def main():
     base_url = str(params.get("url"))
     proxy = params.get("proxy", False)
     verify_certificate = not params.get("insecure", False)
-    is_update_session = params.get("isUpdate", False)
+    is_update_session = not params.get("isUpdate", False)
 
     incident_collections = params.get("incident_collections", [])
     incidents_first_fetch = params.get("first_fetch", "3 days").strip()
