@@ -473,7 +473,9 @@ class Client(BaseClient):
             date_from = None
             requests_count += 1
 
-            yield portion.get("items"), seq_update
+            # todo: fix this
+            last_fetch = {"seq_update": seq_update}
+            yield portion.get("items"), last_fetch
 
     def _create_search_generator(self, collection_name: str, max_requests: int, date_to: str = None,
                                  page: int = 0, starting_date_from: str = None,
@@ -494,6 +496,8 @@ class Client(BaseClient):
         requests_count = 0
         result_id = None
         no_data_flag = 0
+        # maybe need to use get element by key to avoid future problems
+        key_for_date = MAPPING.get(collection_name).get("date")
         while True:
             if requests_count >= max_requests or no_data_flag:
                 break
@@ -530,15 +534,15 @@ class Client(BaseClient):
                 starting_date_to = datetime.now().strftime(DATE_FORMAT)
                 date_to = starting_date_to
             else:
-                if data[0].get("uploadTime") == data[-1].get("uploadTime"):
+                if data[0].get(key_for_date) == data[-1].get(key_for_date):
                     page += 1
                 else:
                     result_id = None
                     page = 0
                     for i in range(len(data) - 1, -1, -1):
-                        if data[i].get("uploadTime") != data[-1].get("uploadTime"):
+                        if data[i].get(key_for_date) != data[-1].get(key_for_date):
                             date_to = (dateparser.parse(
-                                data[i].get("uploadTime")) - timedelta(seconds=1)).strftime(DATE_FORMAT)
+                                data[i].get(key_for_date)) - timedelta(seconds=1)).strftime(DATE_FORMAT)
                             data = data[:i + 1:]
                             break
 
@@ -610,6 +614,7 @@ class Client(BaseClient):
         # Handle first time fetch
         date_from = None
         last_fetch = kwargs.get("last_fetch")
+        is_update_session = kwargs.get("is_update_session")
         if not last_fetch:
             date_from = dateparser.parse(kwargs.get("first_fetch_time"))
             if date_from is None:
@@ -617,28 +622,39 @@ class Client(BaseClient):
                                        'please use something like this: 2020-01-01 or January 1 2020 or 3 days')
             date_from = date_from.strftime('%Y-%m-%d')
 
-        if collection_name == "compromised/breached":
-            # we need the isinstance check for BC because it used to be a string
-            if last_fetch and isinstance(last_fetch, dict):
-                starting_date_from = last_fetch.get("starting_date_from")
-                starting_date_to = last_fetch.get("starting_date_to")
-                date_to = last_fetch.get("current_date_to")
-                page = last_fetch.get("page", 0)
-            else:
-                starting_date_from = date_from
-                starting_date_to = datetime.now().strftime(DATE_FORMAT)
-                date_to = starting_date_to
-                page = 0
-            return self._create_search_generator(collection_name=collection_name, max_requests=max_requests,
-                                                 date_to=date_to, page=page, starting_date_from=starting_date_from,
-                                                 starting_date_to=starting_date_to)
-        elif collection_name == "bp/domain":
+        if collection_name == "bp/domain":
             if not last_fetch:
                 last_fetch = self._legacy_get_last(date_from=date_from, action="domain")
             return self._create_legacy_generator(action="domain", max_requests=max_requests, last=last_fetch)
-        else:
+
+        # we need the isinstance check for BC because it used to be a string
+        if not isinstance(last_fetch, dict):
+            starting_date_to = datetime.now().strftime(DATE_FORMAT)
+            last_fetch = {
+                "starting_date_from": date_from,
+                "starting_date_to": starting_date_to,
+                "current_date_to": starting_date_to,
+                "page": 0,
+                "seq_update": last_fetch
+            }
+
+        if is_update_session:
+            seq_update = last_fetch.get("seq_update")
+            starting_date_from = last_fetch.get("starting_date_from", date_from)
+
             return self._create_update_generator(collection_name=collection_name, max_requests=max_requests,
-                                                 date_from=date_from, seq_update=last_fetch)
+                                                 date_from=starting_date_from, seq_update=seq_update)
+        else:
+            starting_date_from = last_fetch.get("starting_date_from", date_from)
+            if not starting_date_from:
+                starting_date_from = (datetime.now() - timedelta(hours=1)).strftime(DATE_FORMAT)
+            starting_date_to = last_fetch.get("starting_date_to", datetime.now().strftime(DATE_FORMAT))
+            date_to = last_fetch.get("current_date_to", starting_date_to)
+            page = last_fetch.get("page", 0)
+
+            return self._create_search_generator(collection_name=collection_name, max_requests=max_requests,
+                                                 date_to=date_to, page=page, starting_date_from=starting_date_from,
+                                                 starting_date_to=starting_date_to)
 
     def create_manual_generator(self, collection_name: str, date_from: str = None,
                                 date_to: str = None, query: str = None) -> Generator:
@@ -1000,7 +1016,8 @@ def transform_function(result, previous_keys="", is_inside_list=False):
 
 
 def fetch_incidents_command(client: Client, last_run: Dict, first_fetch_time: str,
-                            incident_collections: List, requests_count: int) -> Tuple[Dict, List]:
+                            incident_collections: List, requests_count: int,
+                            is_update_session: bool) -> Tuple[Dict, List]:
     """
     This function will execute each interval (default is 1 minute).
 
@@ -1009,6 +1026,7 @@ def fetch_incidents_command(client: Client, last_run: Dict, first_fetch_time: st
     :param first_fetch_time: if last_run is None then fetch all incidents since first_fetch_time.
     :param incident_collections: list of collections enabled by client.
     :param requests_count: count of requests to API per collection.
+    :param is_update_session: if True - update session, if False - search session.
 
     :return: next_run will be last_run in the next fetch-incidents; incidents and indicators will be created in Demisto.
     """
@@ -1018,7 +1036,8 @@ def fetch_incidents_command(client: Client, last_run: Dict, first_fetch_time: st
         last_fetch = last_run.get("last_fetch", {}).get(collection_name)
 
         portions = client.create_poll_generator(collection_name=collection_name, max_requests=requests_count,
-                                                last_fetch=last_fetch, first_fetch_time=first_fetch_time)
+                                                last_fetch=last_fetch, first_fetch_time=first_fetch_time,
+                                                is_update_session=is_update_session)
         for portion, last_fetch in portions:
             for feed in portion:
                 mapping = MAPPING.get(collection_name, {})
@@ -1231,6 +1250,7 @@ def main():
     base_url = str(params.get("url"))
     proxy = params.get("proxy", False)
     verify_certificate = not params.get("insecure", False)
+    is_update_session = params.get("isUpdate", False)
 
     incident_collections = params.get("incident_collections", [])
     incidents_first_fetch = params.get("first_fetch", "3 days").strip()
@@ -1283,7 +1303,8 @@ def main():
             next_run, incidents = fetch_incidents_command(client=client, last_run=demisto.getLastRun(),
                                                           first_fetch_time=incidents_first_fetch,
                                                           incident_collections=incident_collections,
-                                                          requests_count=requests_count)
+                                                          requests_count=requests_count,
+                                                          is_update_session=is_update_session)
             demisto.setLastRun(next_run)
             demisto.incidents(incidents)
         else:

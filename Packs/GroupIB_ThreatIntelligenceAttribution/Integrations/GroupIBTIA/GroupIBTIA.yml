@@ -29,6 +29,11 @@ configuration:
   name: isFetch
   required: false
   type: 8
+- additionalinfo: Fetch only newly created feeds without getting updates for the old ones (excluding bp/domain collection).
+  display: Fetch without updates
+  name: isUpdate
+  required: false
+  type: 8
 - additionalinfo: Type(s) of incidents to fetch from the third party API.
   display: Colletions to fetch
   hidden: false

@@ -15,3 +15,4 @@
 * Action: "Run a script".
 * Script: "GIBIncidentUpdate" (will recreate closed incidents if they get an update, in other cases will update the existing one) or "GIBIncidentUpdateIncludingClosed"(will only update incidents). 
 7. Don't forget to contact Group-IB to whitelist your Cortex IP or public IP of a proxy that you are using with Cortex.
+8. It is better not to swap the "Fetch without updates" parameter back and forth. Instead, you should create two instances: one with collections, for which you want to get updates; one with collections, for which you want to get only newly created feeds.
