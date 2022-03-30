@@ -9,7 +9,7 @@ ruamel.yaml<0.17
 pipenv==2020.11.15
 autopep8==1.6.0
 mypy==0.942
-networkx==2.6.3
+networkx==2.7.1
 gitpython==3.1.11
 beautifulsoup4==4.9.3
 pypdf2==1.26.0
