@@ -4,7 +4,7 @@ demisto-py>=3.1.4
 demisto-sdk==1.6.5
 pytest==7.0.1
 pytest-mock==3.7.0
-requests-mock==1.9.3
+requests-mock==1.10.0
 ruamel.yaml<0.18
 autopep8==1.6.0
 mypy==0.942
